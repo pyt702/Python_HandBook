@@ -1,4 +1,10 @@
-# Mastering FastAPI
+# ⚡ Chapter 3: FastAPI
+
+*Mastering FastAPI.*
+Build lightning-fast, async REST APIs with auto-generated Swagger documentation.
+**Estimated Reading Time:** 30 min
+
+---
 
 !!! info "Java Analogy"
     FastAPI is basically what Spring Boot would look like if it went on a diet, learned async, and returned with auto-generated Swagger docs built in. The moment you run your server and open `/docs` — seeing your entire API documented and testable without a single Swagger config line — is genuinely exciting.

@@ -1,4 +1,10 @@
-# Core Python Skills & Best Practices
+# 📚 Chapter 1: Core Python
+
+*Advanced Python concepts.*
+Deep dive into decorators, generators, and context managers.
+**Estimated Reading Time:** 20 min
+
+---
 
 ## 1. Data Structures — List, Tuple, Set, Dict
 

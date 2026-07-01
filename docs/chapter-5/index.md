@@ -1,4 +1,10 @@
-# Mastering LangFuse
+# 📈 Chapter 5: LangFuse
+
+*Observability with LangFuse.*
+Trace, monitor, and debug your LLM calls in production.
+**Estimated Reading Time:** 15 min
+
+---
 
 If you are a Spring Boot developer, you are already deeply familiar with observability. You would never deploy a production service without Micrometer, Zipkin, and Actuator. 
 

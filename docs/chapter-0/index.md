@@ -1,4 +1,10 @@
-# Python Basics for Java Developers
+# 🐍 Chapter 0: Python Basics
+
+*Python Basics for Spring Boot Developers.*
+Learn Python syntax, OOP, async programming, and the language features you'll use when building FastAPI and AI applications.
+**Estimated Reading Time:** 25 min
+
+---
 
 !!! note
     If you've been writing Java for years, Python is going to feel weirdly short. No semicolons, no closing braces — but it's very real code. Every concept below maps directly to something you already know from Java and Spring Boot.

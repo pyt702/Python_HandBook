@@ -1,4 +1,10 @@
-# Getting Started
+# 🚀 Getting Started
+
+*Setting up your machine for Python AI Development.*
+Learn how to install Python, configure your IDE, and run your first virtual environment.
+**Estimated Reading Time:** 10 min
+
+---
 
 ## 1. Overview
 

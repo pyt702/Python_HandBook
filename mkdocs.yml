@@ -21,6 +21,7 @@ theme:
     - search.suggest
     - content.code.copy        # Adds a click-to-copy button to code blocks
     - content.code.annotate    # Allows code annotations
+    - toc.integrate            # Integrates TOC into the left sidebar
     - toc.follow
 
   palette:
@@ -47,18 +48,20 @@ extra_css:
   - stylesheets/extra.css
 
 nav:
-  - Home: index.md
-  - Getting Started: getting-started/index.md
-  - Python Basics: chapter-0/index.md
-  - Core Python: chapter-1/index.md
-  - Pydantic: chapter-2/index.md
-  - FastAPI: chapter-3/index.md
-  - LangGraph: chapter-4/index.md
-  - LangFuse: chapter-5/index.md
-  - EduTrack Project: chapter-6/index.md
+  - 🏠 Home: index.md
+  - 🚀 Getting Started: getting-started/index.md
+  - 🐍 Python Basics: chapter-0/index.md
+  - 📚 Core Python: chapter-1/index.md
+  - 📦 Pydantic: chapter-2/index.md
+  - ⚡ FastAPI: chapter-3/index.md
+  - 🤖 LangGraph: chapter-4/index.md
+  - 📈 LangFuse: chapter-5/index.md
+  - 🎓 EduTrack Project: chapter-6/index.md
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - pymdownx.details
   - pymdownx.highlight:
       anchor_linenums: true

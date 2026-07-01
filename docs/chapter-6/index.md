@@ -1,4 +1,10 @@
-# Full CRUD – School Management System
+# 🎓 Chapter 6: EduTrack Project
+
+*The EduTrack Capstone.*
+Tie it all together by building a complete, production-ready Student Management AI application.
+**Estimated Reading Time:** 45 min
+
+---
 
 > **🏫 The Story: EduTrack — A School Management System**
 >

@@ -1,4 +1,10 @@
-# Mastering LangGraph
+# 🤖 Chapter 4: LangGraph
+
+*Mastering LangGraph.*
+Model your AI application as an explicit state machine for complex workflows and multi-agent coordination.
+**Estimated Reading Time:** 35 min
+
+---
 
 If your audience is specifically Spring Boot developers, comparing every LangGraph concept to a core Spring Boot feature isn't always natural. The true equivalent in the Java ecosystem is **Spring AI**.
 

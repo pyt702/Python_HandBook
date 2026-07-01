@@ -1,4 +1,10 @@
-# Mastering Pydantic
+# 📦 Chapter 2: Pydantic
+
+*Mastering Pydantic.*
+The foundation of the entire Python AI/API stack. Learn how to validate data effortlessly.
+**Estimated Reading Time:** 20 min
+
+---
 
 Pydantic is the foundation of the entire Python AI/API stack. FastAPI, LangGraph, and LangFuse all use it internally. Before you can write a FastAPI route, you need to understand Pydantic models. 
 
