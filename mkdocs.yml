@@ -6,7 +6,7 @@ theme:
   name: material
   
   # Logo placement configuration
-  logo: assets/accenture-logo-white.svg
+  logo: assets/Accenture-logo.png
   favicon: assets/favicon.ico
   
   features:
