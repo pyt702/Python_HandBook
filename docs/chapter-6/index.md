@@ -470,4 +470,4 @@ When integrated with the frontend, the UI receives both the markdown string (for
 
 The full, working code for this project is available on GitHub!
 
-[**View the Climato Repository**](https://github.com/bunny/Climato)
+[**View the Climato Repository**](https://github.com/pyt702/Climato)
