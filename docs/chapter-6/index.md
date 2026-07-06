@@ -1,7 +1,7 @@
 ---
 icon: material/school
 ---
-# :material-school: Chapter 6: EduTrack Project
+# :material-school: Chapter 6: WeatherMind Project
 
 *The EduTrack Capstone.*
 Tie it all together by building a complete, production-ready Student Management AI application.
