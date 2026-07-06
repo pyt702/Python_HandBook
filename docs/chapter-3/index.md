@@ -29,7 +29,7 @@ FastAPI is built on Starlette (for the HTTP layer) and Pydantic (for data valida
 
 Unlike Spring Boot, FastAPI does not force a specific folder structure. However, to keep Spring developers comfortable, we highly recommend replicating a standard 3-tier architecture.
 
-**Recommended Folder Structure**
+**Recommended Folder flow**
 
 ```text
 app/
