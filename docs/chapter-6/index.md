@@ -1,473 +1,473 @@
 ---
-icon: material/school
+icon: material/weather-partly-cloudy
 ---
-# :material-school: Chapter 6: EduTrack Project
+# :material-weather-partly-cloudy: Chapter 6: Climato Backend Architecture
 
-*The EduTrack Capstone.*
-Tie it all together by building a complete, production-ready Student Management AI application.
+*The Climato Weather AI Capstone.*
+Tie it all together by building a complete, production-ready AI Weather Assistant application.
 **Estimated Reading Time:** 45 min
 
 ---
 
-> **🏫 The Story: EduTrack — A School Management System**
->
-> We are building EduTrack — a backend system for a school that manages Students, Courses, and Enrollments. Every section of this chapter tells the next part of the same story, using the same data, the same IDs, the same names.
-> The four technologies work together like this:
-> Pydantic — validates all data going in and out (the gatekeeper)
-> FastAPI — exposes the REST endpoints teachers & admins call
-> LangGraph — powers an AI assistant that handles enrollment queries via natural language
-> LangFuse — observes every operation: API call, AI decision, DB write — fully traceable
-
-**Pydantic — Validates data → FastAPI — Exposes REST API → LangGraph — AI orchestration → LangFuse — Observability**
-
-## 1. Project Structure — EduTrack School System
-
-EduTrack manages three resources: Students, Courses, and Enrollments. Each resource has its own file per layer. The folder structure below is the same whether you're using Spring Boot or FastAPI — only the filenames and annotations differ.
-
-??? abstract "Folder Structure Comparison"
-    | FastAPI File | Spring Boot Equivalent |
-    |---|---|
-    | `models/student.py`  (SQLAlchemy ORM) | `Student.java`  (@Entity) |
-    | `schemas/student_schema.py`  (Pydantic) | `StudentDTO.java` |
-    | `services/student_service.py` | `StudentService.java`  (@Service) |
-    | `routes/students.py` | `StudentController.java`  (@RestController) |
-    | `agent/enrollment_agent.py` | (LangGraph AI agent — no Spring equivalent) |
-    | `main.py` | `Application.java`  (@SpringBootApplication) |
-
----
-
-### Step 1 of 4 · Pydantic — Define & Validate All Data
-
-Before writing a single route or database query, we define all our data shapes with Pydantic. These models are the single source of truth.
-
-!!! note "The Gatekeeper"
-    Every field in these models is used consistently across all four technologies. The same `StudentCreate` model that validates the HTTP POST body is also what the LangGraph agent outputs.
-
-#### StudentCreate
-
-**Purpose**
-Represents the request body for creating a new student. Validates email formats and grade constraints.
-
-**Used In**
-- FastAPI `POST /students`
-- LangGraph `enroll_node`
-
-```python
-class StudentCreate(BaseModel):
-    name: str = Field(min_length=2, max_length=100)
-    email: EmailStr
-    roll_number: str = Field(pattern=r"^STU-\d{4}$")
-    grade: int = Field(ge=1, le=12)
-```
-
-#### StudentUpdate
-
-**Purpose**
-Represents a partial edit (PATCH). All fields are optional.
-
-**Used In**
-- FastAPI `PATCH /students/{id}`
-
-```python
-class StudentUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=2, max_length=100)
-    grade: Optional[int] = Field(None, ge=1, le=12)
-```
-
-#### StudentResponse
-
-**Purpose**
-The final output sent back to the client. Safely strips internal data.
-
-**Used In**
-- All FastAPI `GET` endpoints
-- LangGraph agent final output
-
-```python
-class StudentResponse(BaseModel):
-    id: int
-    name: str
-    email: str
-    roll_number: str
-    grade: int
-    enrolled_at: datetime
-    model_config = {"from_attributes": True}
-```
-
-!!! tip "Key Takeaways"
-    - **Pydantic replaces DTOs + Bean Validation** in a single class.
-    - **Separate your Request and Response models** to avoid accidentally exposing sensitive data.
-    - **Use `from_attributes = True`** so Pydantic can read directly from SQLAlchemy ORM objects.
-
-??? example "Complete schemas/student_schema.py"
-    ```python
-    from pydantic import BaseModel, Field, EmailStr
-    from typing import Optional
-    from datetime import datetime
-
-    class StudentCreate(BaseModel):
-        name: str = Field(min_length=2, max_length=100)
-        email: EmailStr
-        roll_number: str = Field(pattern=r"^STU-\d{4}$")
-        grade: int = Field(ge=1, le=12)
-
-    class StudentUpdate(BaseModel):
-        name: Optional[str] = Field(None, min_length=2, max_length=100)
-        grade: Optional[int] = Field(None, ge=1, le=12)
-
-    class StudentResponse(BaseModel):
-        id: int
-        name: str
-        email: str
-        roll_number: str
-        grade: int
-        enrolled_at: datetime
-        model_config = {"from_attributes": True}
-    ```
-
----
-
-### Step 2 of 4 · FastAPI — Expose the REST Endpoints
-
-Now that our data shapes are locked down, we wire them into FastAPI routes. FastAPI reads the schema, validates input, and serializes output automatically.
-
-#### Create
-
-**Purpose**
-Registers a new student into the database.
-
-**Used In**
-- Admin Dashboard
-
-```python
-@router.post("/", response_model=StudentResponse, status_code=201)
-async def create_student(data: StudentCreate, svc = Depends(get_svc)):
-    return svc.create(data)
-```
-
-#### Read
-
-**Purpose**
-Fetches paginated students or a specific student by ID.
-
-```python
-@router.get("/", response_model=List[StudentResponse])
-async def list_students(skip: int = 0, limit: int = 20, svc = Depends(get_svc)):
-    return svc.get_all(skip=skip, limit=limit)
-```
-
-#### Update & Delete
-
-**Purpose**
-Modifies existing records or drops them (cascading to enrollments).
-
-```python
-@router.patch("/{student_id}", response_model=StudentResponse)
-async def update_student(student_id: int, data: StudentUpdate, svc = Depends(get_svc)):
-    return svc.update(student_id, data)
-
-@router.delete("/{student_id}", status_code=204)
-async def delete_student(student_id: int, svc = Depends(get_svc)):
-    svc.delete(student_id)
-```
-
-!!! tip "Key Takeaways"
-    - **FastAPI replaces `@RestController`**.
-    - **`response_model` handles serialization automatically** (no `ObjectMapper` needed).
-    - **`Depends()` replaces `@Autowired`** for injecting the Service layer.
-
-??? example "Complete routes/students.py"
-    ```python
-    from fastapi import APIRouter, Depends, status
-    from sqlalchemy.orm import Session
-    from database import get_db
-    from schemas.student_schema import StudentCreate, StudentUpdate, StudentResponse
-    from services.student_service import StudentService
-    from typing import List
-
-    router = APIRouter(prefix="/api/students", tags=["Students"])
-
-    def get_svc(db: Session = Depends(get_db)): return StudentService(db)
-
-    @router.post("/", response_model=StudentResponse, status_code=201)
-    async def create_student(data: StudentCreate, svc = Depends(get_svc)):
-        return svc.create(data)
-
-    @router.get("/", response_model=List[StudentResponse])
-    async def list_students(skip:int=0, limit:int=20, svc=Depends(get_svc)):
-        return svc.get_all(skip=skip, limit=limit)
-
-    @router.get("/{student_id}", response_model=StudentResponse)
-    async def get_student(student_id: int, svc=Depends(get_svc)):
-        return svc.get_or_404(student_id)
-
-    @router.patch("/{student_id}", response_model=StudentResponse)
-    async def update_student(student_id:int, data:StudentUpdate, svc=Depends(get_svc)):
-        return svc.update(student_id, data)
-
-    @router.delete("/{student_id}", status_code=204)
-    async def delete_student(student_id: int, svc=Depends(get_svc)):
-        svc.delete(student_id)
-    ```
-
----
-
-### Step 3 of 4 · LangGraph — AI Enrollment Assistant
-
-The school principal wants a natural-language assistant: *"Enroll Arjun in CS-101"*. Instead of making the admin click buttons, LangGraph orchestrates the AI to hit the exact same FastAPI services we built in Step 2.
-
-#### State
-
-**Purpose**
-The `TypedDict` that carries data between graph nodes. Think of it as the shared memory for one specific execution of the agent.
-
-```python
-class SchoolAgentState(TypedDict):
-    user_query: str          # "Enroll Arjun in CS-101"
-    intent: str              # "enroll" | "list_students" | "drop"
-    student_name: str        
-    course_code: str         
-    result: dict             
-```
-
-#### Nodes
-
-**Purpose**
-Python functions that update the `State`. This specific node uses the LLM to extract the user's intent.
-
-```python
-def parse_intent(state: SchoolAgentState) -> dict:
-    prompt = f"Parse the admin query: {state['user_query']} into JSON."
-    response = llm.invoke([HumanMessage(content=prompt)])
-    parsed = json.loads(response.content)
-    return {"intent": parsed["intent"], "student_name": parsed.get("student_name")}
-```
-
-#### Router
-
-**Purpose**
-A simple function that looks at the current `State` and decides which Node executes next.
-
-```python
-def route_intent(state: SchoolAgentState) -> str:
-    intent_map = {"enroll": "enroll", "drop": "drop"}
-    return intent_map.get(state["intent"], END)
-```
-
-#### Graph Construction
-
-**Purpose**
-Wiring the Nodes and Routers together into a compiled StateMachine.
-
-```python
-g = StateGraph(SchoolAgentState)
-g.add_node("parse_intent", parse_intent)
-g.add_node("enroll", enroll_node)
-g.add_node("drop", drop_node)
-
-g.set_entry_point("parse_intent")
-g.add_conditional_edges("parse_intent", route_intent)
-school_agent = g.compile()
-```
-
-!!! tip "Key Takeaways"
-    - **LangGraph separates AI logic from Business Logic**. The AI just extracts parameters; it calls the existing `StudentService` to do the actual database writes.
-    - **State is immutable**. Each node returns a partial dictionary that merges into the global state.
-
-??? example "Complete agent/enrollment_agent.py"
-    ```python
-    from typing import TypedDict, Literal
-    from langgraph.graph import StateGraph, END
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import HumanMessage
-    from schemas.enrollment_schema import EnrollmentCreate
-    from services.enrollment_service import EnrollmentService
-
-    class SchoolAgentState(TypedDict):
-        user_query: str
-        intent: str
-        student_name: str
-        course_code: str
-        student: dict | None
-        result: dict
-        error: str | None
-
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-
-    def parse_intent(state: SchoolAgentState) -> dict:
-        prompt = f'''Parse query: "{state["user_query"]}" into JSON {"intent", "student_name", "course_code"}'''
-        response = llm.invoke([HumanMessage(content=prompt)])
-        import json
-        parsed = json.loads(response.content)
-        return {"intent": parsed["intent"], "student_name": parsed.get("student_name", ""), "course_code": parsed.get("course_code", "")}
-
-    def enroll_node(state: SchoolAgentState, db) -> dict:
-        # Calls the FastAPI Service layer
-        result = EnrollmentService(db).enroll(EnrollmentCreate(student_id=state["student"]["id"], course_id=7))
-        return {"result": result.model_dump()}
-
-    def route_intent(state: SchoolAgentState) -> str:
-        intent_map = {"enroll": "enroll", "drop": "drop", "list_students": "list_students"}
-        return intent_map.get(state["intent"], END)
-
-    g = StateGraph(SchoolAgentState)
-    g.add_node("parse_intent", parse_intent)
-    g.add_node("enroll", enroll_node)
+!!! info "The Goal: Climato — A Smart Weather Assistant"
+    We are building the backend for Climato — a weather application that lets users ask natural language questions about historical records and daily forecasts. 
     
-    g.set_entry_point("parse_intent")
-    g.add_conditional_edges("parse_intent", route_intent, {"enroll": "enroll"})
-    school_agent = g.compile()
-    ```
+    - **Completely Free:** No API keys required. We use the open-source Open-Meteo API with unlimited usage.
+    - **FastAPI Part:** Exposes REST endpoints that bridge the frontend and the AI.
+    - **LangGraph Part:** Powers a multi-step AI orchestration workflow (intent parsing → database cache check → external API call → natural language response generation).
 
 ---
 
-### Step 4 of 4 · LangFuse — Observe Every Operation End-to-End
+## Step 0: Project Folder Structure
 
-We add full observability. LangFuse traces the complete lifecycle: the FastAPI request, the LangGraph agent's decisions, the LLM call, and the DB write — all visible in one trace tree.
+Before we dive into the code, let's understand how the backend is organized. We use a scalable, multi-tier architecture typical for modern web services.
 
-#### Tracing & Metadata
-
-**Purpose**
-Use the `@observe` decorator to automatically capture inputs, outputs, and execution time. We inject business metadata (like `student_id`) so we can easily search for it later in the dashboard.
-
-```python
-from langfuse.decorators import observe, langfuse_context
-
-@observe(name="fastapi.enroll_student")
-def traced_enroll(data: EnrollmentCreate, db) -> dict:
-    langfuse_context.update_current_trace(
-        tags=["crud", "enrollment"],
-        metadata={"student_id": data.student_id, "course_id": data.course_id}
-    )
-    result = EnrollmentService(db).enroll(data)
-    langfuse_context.score_current_observation(name="success", value=1.0)
-    return result.model_dump()
-```
-
-!!! tip "Key Takeaways"
-    - **`@observe` replaces manual logging or MDC contexts**.
-    - **Attach business IDs as metadata** so you can track a single user across both REST endpoints and AI Agent invocations.
-
-??? example "Complete agent/observed_agent.py"
-    ```python
-    from langfuse.decorators import observe, langfuse_context
-    from langfuse.callback import CallbackHandler
-    from schemas.enrollment_schema import EnrollmentCreate
-
-    @observe(name="fastapi.enroll_student")
-    def traced_enroll(data: EnrollmentCreate, db) -> dict:
-        langfuse_context.update_current_trace(
-            tags=["crud", "enrollment", "create"],
-            metadata={
-                "student_id": data.student_id,
-                "course_id": data.course_id,
-                "resource": "enrollment"
-            }
-        )
-        result = EnrollmentService(db).enroll(data)
-        langfuse_context.score_current_observation(name="success", value=1.0)
-        return result.model_dump()
-
-    @observe(name="agent.enrollment_query")
-    def run_school_agent(query: str, db) -> dict:
-        langfuse_context.update_current_trace(
-            tags=["ai", "langgraph"],
-            metadata={"query": query}
-        )
-        langfuse_handler = CallbackHandler(session_id="admin-session-001")
-        config = {"callbacks": [langfuse_handler]}
-
-        result = school_agent.invoke({"user_query": query}, config=config)
-        return result
+??? example "Project Folder Structure"
+    ```text
+    backend/
+    ├── main.py                 # Application entry point
+    ├── core/                   
+    │   └── database.py         # MongoDB connection setup
+    ├── models/                 
+    │   └── db_models.py        # Database schemas
+    ├── schemas/                
+    │   └── dtos.py             # Data Transfer Objects (Pydantic validation)
+    ├── repositories/           
+    │   └── weather_repo.py     # MongoDB queries (cache, history)
+    ├── controllers/            
+    │   └── chat_controller.py  # FastAPI router endpoints
+    ├── tools/                  
+    │   └── weather_tool.py     # Open-Meteo API integrations
+    └── graph/                  
+        ├── graph.py            # LangGraph workflow definition
+        └── nodes.py            # LangGraph AI nodes
     ```
+
+### Component Responsibilities
+
+| Component | Responsibility |
+|---|---|
+| **FastAPI** | Receives HTTP requests |
+| **LangGraph** | Controls workflow |
+| **Planner Node** | Extracts weather intent |
+| **Database Node** | Checks cached weather |
+| **Weather Tool** | Calls Open-Meteo |
+| **Repository** | Performs MongoDB queries |
+| **Response Node** | Generates natural language answers |
 
 ---
 
-## 2. Putting It All Together — End-to-End Flow
+## Step 1: Planning the Flow
 
-Here is the complete journey of a single natural-language enrollment request — *"Enroll Arjun in CS-101"* — flowing through all four technologies simultaneously:
+When a user asks a question like *"What's the weather in Bangalore?"*, the request follows a strict path. We don't just blindly query an LLM; we parse the intent, check our local database cache, fetch missing data from Open-Meteo, and finally generate a response.
+
+![Graph Flow](../assets/graph_flow.png)
 
 ```mermaid
 sequenceDiagram
-    participant Admin
+    participant User
     participant FastAPI
-    participant LangGraph
-    participant Pydantic
-    participant LangFuse
+    participant Graph (Planner)
+    participant MongoDB
+    participant OpenMeteo API
+    participant Graph (Response)
     
-    Admin->>FastAPI: POST /api/agent/query "Enroll Arjun in CS-101"
-    FastAPI->>LangFuse: Opens trace: agent.enrollment_query
-    FastAPI->>LangGraph: invoke()
+    User->>FastAPI: POST /chat "Weather in Bangalore?"
+    FastAPI->>MongoDB: Fetch recent history
+    FastAPI->>Graph (Planner): invoke()
     
-    LangGraph->>LangGraph: parse_intent node (LLM)
-    LangGraph-->>LangFuse: Logs LLM tokens & latency
+    Graph (Planner)->>Graph (Planner): Extract Intent (LLM)
+    Graph (Planner)->>MongoDB: Check cache for Bangalore
     
-    LangGraph->>LangGraph: route_intent -> "enroll"
-    LangGraph->>FastAPI: calls EnrollmentService.enroll()
-    FastAPI->>Pydantic: Validates EnrollmentCreate
-    FastAPI-->>LangGraph: returns EnrollmentResponse
+    alt Cache Miss
+        MongoDB-->>Graph (Planner): No data found
+        Graph (Planner)->>OpenMeteo API: Fetch weather data
+        OpenMeteo API-->>Graph (Planner): Weather JSON
+        Graph (Planner)->>MongoDB: Save to cache (TTL = end of day)
+    else Cache Hit
+        MongoDB-->>Graph (Planner): Cached Weather JSON
+    end
     
-    LangGraph-->>FastAPI: returns final AI message
-    FastAPI->>LangFuse: score_current_observation(success=1.0)
-    LangFuse-->>LangFuse: Trace closed
-    FastAPI-->>Admin: 200 OK (Response JSON)
+    Graph (Planner)->>Graph (Response): Pass aggregated data
+    Graph (Response)->>Graph (Response): Generate friendly answer (LLM)
+    
+    Graph (Response)-->>FastAPI: Return state
+    FastAPI->>MongoDB: Save conversation history (TTL = 10 mins)
+    FastAPI-->>User: 200 OK (Response JSON + UI Widget Data)
 ```
-
-!!! note "The Big Picture"
-    The same `student_id=42` and `course_id=7` appear in every step. LangFuse, LangGraph, FastAPI, and Pydantic are all working on the same piece of data — just handling different concerns: AI reasoning, HTTP transport, business validation, and observability.
 
 ---
 
-## 3. Final Annotation Mapping
+## Step 2: Foundation (Schemas & Controllers)
 
-| Spring Boot | FastAPI / Python |
-|---|---|
-| `@SpringBootApplication` | `FastAPI()` + `uvicorn main:app --reload` |
-| `@RestController` + `@RequestMapping` | `APIRouter(prefix=...)` + `@router.get/post...` |
-| `@RequestBody @Valid DTO` | Pydantic model as fn param (auto-validated) |
-| `@Service` | Service class injected via `Depends()` |
-| `@Repository` / `JpaRepository` | SQLAlchemy ORM + Repository class |
-| `@Entity` + `@Column` | SQLAlchemy Column definitions |
-| `@Valid` + Bean Validation | Pydantic Field validators |
-| Micrometer + Actuator | LangFuse traces + `@observe` decorator |
-| Spring State Machine | LangGraph StateGraph + nodes + edges |
+First, we define our **DTOs (Data Transfer Objects)** using Pydantic in `schemas/dtos.py`. These ensure every request entering the API is strictly validated.
+
+??? example "schemas/dtos.py"
+    ```python
+    from pydantic import BaseModel
+    from typing import Optional, List, Literal
+
+    class WeatherTask(BaseModel):
+        type: Literal["forecast", "historical"]
+        city: str
+        start_date: str
+        end_date: str
+
+    class ChatRequest(BaseModel):
+        message: str
+        session_id: str
+
+    class ChatResponse(BaseModel):
+        answer: str
+        data: Optional[List[dict]] = None
+    ```
+
+Next, we expose the REST endpoint in `controllers/chat_controller.py`. This receives the request, triggers the LangGraph agent, and returns the AI's final answer.
+
+??? example "controllers/chat_controller.py"
+    ```python
+    from fastapi import APIRouter
+    from schemas.dtos import ChatRequest, ChatResponse
+    from graph.graph import app as graph_app
+    from repositories.weather_repo import insert_conversation, get_recent_conversations
+    from datetime import datetime, timezone
+
+    router = APIRouter()
+
+    @router.post("/chat", response_model=ChatResponse)
+    async def chat_endpoint(request: ChatRequest):
+        # 1. Fetch recent history for this session
+        history = await get_recent_conversations(request.session_id)
+        
+        # 2. Run LangGraph workflow
+        result = await graph_app.ainvoke({
+            "question": request.message,
+            "history": history,
+            "session_id": request.session_id
+        })
+        answer = result.get("final_answer", "I'm sorry, I couldn't process your request.")
+        
+        # 3. Save conversation with UTC datetime for MongoDB TTL index
+        await insert_conversation({
+            "session_id": request.session_id,
+            "question": request.message,
+            "answer": answer,
+            "timestamp": datetime.now(timezone.utc)
+        })
+        
+        return ChatResponse(answer=answer, data=result.get("db_results"))
+    ```
 
 ---
 
-## 4. SQLAlchemy vs Hibernate: The Critical Missing Links
+## Why LangGraph?
 
-If you look closely at the database code above, it works perfectly, but there are a few massive "Java-to-Python" pitfalls hidden in the implementation.
+You might wonder why we don't simply ask the LLM to answer the weather question directly.
 
-### Database Migrations (Alembic)
+The reason is that the LLM should not:
+- Query databases.
+- Build API URLs.
+- Decide cache policies.
+- Fetch external weather data.
 
-In Spring Boot, you add `spring.jpa.hibernate.ddl-auto=update` and your tables magically appear. **SQLAlchemy does not do this automatically.**
+Instead, LangGraph separates AI reasoning from deterministic execution. The LLM only understands the user's intent, while Python code performs database lookups, API requests, and caching.
 
-You have two choices:
-1. **The Quick Prototype Way:** Add `Base.metadata.create_all(bind=engine)` when your app starts.
-2. **The Production Way (Alembic):** Alembic is the exact equivalent of **Flyway** or **Liquibase**. 
+This separation makes the application more reliable, faster, and easier to maintain.
 
-### The Sync vs Async Event Loop Mismatch (Performance Bug!)
+---
 
-As we covered in detail in **[Chapter 0: Async/Await](../chapter-0/index.md#8-asyncawait-critical-for-fastapi)** and **[Chapter 3: FastAPI](../chapter-3/index.md)**, there is a critical difference in how Python and Java handle blocking code.
+## Step 3: Graph Construction (Nodes & State)
 
-Notice that our FastAPI routes are `async def`, but our database `Session` is synchronous. 
-If you put a blocking database query inside an `async def` function, **it blocks the entire server event loop**. (Spring's blocking JDBC model doesn't have this exact problem because it uses a thread-per-request model).
+We use LangGraph to orchestrate our AI agent. 
 
-To fix this for high-traffic apps, you must use **AsyncSQLAlchemy** (`AsyncSession`) and an async driver like `asyncpg`.
+### The Graph State
+The state is the shared memory dictionary passed between all nodes during a single execution.
 
-### Transaction Boundaries (@Transactional)
-
-Unlike Spring Boot, which magically handles transaction rollbacks via the `@Transactional` annotation (discussed in our earlier architectural comparisons), SQLAlchemy requires explicit boundary management.
-
-You must handle the `commit()` and `rollback()` boundaries yourself in the Service layer.
-
-```python
-def enroll(self, data: EnrollmentCreate):
-    try:
-        enrollment = Enrollment(...)
-        self.db.add(enrollment)
-        self.db.commit()  # <-- You must call commit!
-    except Exception as e:
-        self.db.rollback() # <-- Catch and rollback!
-        raise
+```mermaid
+flowchart TD
+    Start((START)) -->|question, history| Planner[Planner]
+    Planner -->|weather_tasks| DB[Database]
+    DB -->|db_results, missing_tasks| API[Weather API]
+    API -->|db_results| Resp[Response]
+    Resp -->|final_answer| End((END))
 ```
+
+??? example "graph/state.py"
+    ```python
+    from typing import TypedDict
+
+    class GraphState(TypedDict):
+        session_id: str
+        question: str
+        history: list
+        weather_tasks: list
+        db_results: list
+        missing_tasks: list
+        final_answer: str
+    ```
+
+### The Nodes
+Each node performs a specific task. We compile these nodes together in `graph/graph.py`.
+
+**1. Planner Node**  
+Parses the user's messy natural language query into a clean, structured list of `WeatherTask` requirements using an LLM tool call.
+
+??? example "Planner Node Code"
+    ```python
+    async def planner_node(state: GraphState):
+        messages = [
+            SystemMessage(content="You are a weather routing assistant..."),
+            HumanMessage(content=state["question"])
+        ]
+        response = llm_with_tools.invoke(messages)
+        
+        tasks = []
+        if response.tool_calls:
+            for tool_call in response.tool_calls:
+                tasks.append(WeatherTask(**tool_call["args"]))
+                
+        needs_clarification = len(tasks) == 0
+        return {"weather_tasks": tasks, "needs_clarification": needs_clarification}
+    ```
+
+**2. Clarification Node**  
+If the Planner Node finds the query too ambiguous (e.g., just saying "weather"), this node safely halts execution and asks the user for missing details.
+
+??? example "Clarification Node Code"
+    ```python
+    async def clarification_node(state: GraphState):
+        return {"final_answer": "Which city would you like to check? Please provide the location."}
+    ```
+
+**3. Database Node (Theory)**  
+This node is responsible for checking our local MongoDB cache to see if we already fetched the requested weather data today. 
+- It fetches the planned tasks from the database. 
+- If results are zero (cache miss), it marks the tasks as `missing_tasks` to be fetched from the external API. 
+- Otherwise, it waits for parallel tasks to finish and passes the aggregated results down the line. *(We will write the actual code for this in Step 4).*
+
+---
+
+## Step 4: Repositories & Database Node Implementation
+
+Now we write our database logic in `repositories/weather_repo.py` to check for cached weather.
+
+```mermaid
+flowchart TD
+    A[User] --> B[Database]
+    B --> C{Cache Hit?}
+    C -->|Yes| D[Return]
+    C -->|No| E[Open-Meteo]
+    E --> F[Save to MongoDB]
+    F --> G[Return]
+```
+
+??? example "repositories/weather_repo.py"
+    ```python
+    async def get_daily_weather(location_id: str, start_date: str, end_date: str) -> list[dict]:
+        """
+        Returns all non-stale weather_daily docs for this location_id in the given date range.
+        """
+        dates   = _date_range(start_date, end_date)
+        now_iso = _now_iso()
+        
+        cursor = weather_daily_col.find({
+            "location_id": location_id,
+            "date":        {"$in": dates},
+            "expires_at":  {"$gt": now_iso},
+        })
+        
+        docs = await cursor.to_list(length=500)
+        for doc in docs:
+            doc["_id"] = str(doc["_id"])
+            
+        return docs
+    ```
+
+Now we can implement the **Database Node** properly. It acts as the traffic controller: fetching from the repo, and only requesting new API calls if the data is completely missing!
+
+??? example "Database Node Code"
+    ```python
+    async def database_node(state: GraphState):
+        tasks = state.get("weather_tasks", [])
+        db_results = []
+        missing_tasks = []
+
+        for t in tasks:
+            # Hit the repository logic
+            hits = await get_daily_weather(loc_id, t["start_date"], t["end_date"])
+            if not hits:
+                missing_tasks.append(t)
+            else:
+                db_results.extend(hits)
+                
+        return {"db_results": db_results, "missing_tasks": missing_tasks}
+    ```
+
+---
+
+## Step 5: Weather Tools
+
+We need a dedicated tool to fetch real-world data without using any paid APIs. In `tools/weather_tool.py`, we build a wrapper around the **Open-Meteo API**.
+
+!!! info "Why Open-Meteo?"
+    We use Open-Meteo because it is:
+    
+    - Completely free.
+    - Requires no API keys.
+    - Supports forecast and historical weather.
+    - Includes geocoding.
+    - Well suited for educational and open-source projects.
+
+To ensure high performance, we use **batch requests** (`asyncio.gather`). This allows us to fetch data for multiple cities and dates simultaneously, rather than waiting for each API call to finish one by one.
+
+??? example "tools/weather_tool.py"
+    ```python
+    import httpx
+    import asyncio
+
+    async def fetch_weather_batch(tasks: list, client: httpx.AsyncClient) -> list[dict]:
+        """One geocoding lookup per unique city, one API call per city+range group."""
+        
+        # 1. Geocoding pass: check local DB, fall back to API
+        unique_cities = {t.city for t in tasks}
+        location_map = {}
+        for req_city in unique_cities:
+            loc = await get_location(req_city)
+            location_map[req_city.lower()] = loc
+
+        # 2. Build requests
+        reqs = []
+        for task in tasks:
+            loc = location_map[task.city.lower()]
+            reqs.append(build_weather_request(task, loc))
+
+        # 3. Fire all requests simultaneously using asyncio.gather
+        results = []
+        coros = [fetch_open_meteo(r, location_map[r.city.lower()]["id"], client) for r in reqs]
+        api_results = await asyncio.gather(*coros)
+
+        for res in api_results:
+            results.extend(res)
+            
+        return results
+    ```
+
+---
+
+## Step 6: Conversation History Management
+
+To make the AI feel like a real conversation, it needs to remember what you just said. 
+
+We use **MongoDB TTL (Time-To-Live) Indexes**. Every time a message is saved, MongoDB automatically deletes it after 10 minutes (`expireAfterSeconds=600`). In the `chat_controller.py`, we fetch these temporary messages using the user's `session_id` and pass them into the LangGraph state.
+
+??? example "History Injection"
+    ```python
+    async def get_recent_conversations(session_id: str):
+        cursor = conversations_collection.find({"session_id": session_id}).sort("timestamp", 1)
+        return await cursor.to_list(length=5)
+    ```
+
+---
+
+## Step 7: LLM Response
+
+Finally, the **Response Node** takes all the aggregated `db_results` and the `history`, and feeds it into the LLM to generate a markdown-formatted, friendly response for the user.
+
+??? example "Response Node Code"
+    ```python
+    async def response_node(state: GraphState):
+        db_results = state.get("db_results", [])
+        
+        prompt = f"""You are Climato, a friendly weather AI.
+        Provide a friendly markdown response based on this data: {db_results}
+        """
+        
+        response = llm.invoke([
+            SystemMessage(content=prompt),
+            HumanMessage(content=state["question"])
+        ])
+        
+        return {"final_answer": response.content}
+    ```
+
+---
+
+## Step 8: Watch It Run (The Logs)
+
+If we start our backend server and ask a complex multi-part question like *"differences in weather of sydney today and weather on 1999 dec 31"*, we can watch LangGraph work its magic right in the terminal console. Notice how it seamlessly splits the query into multiple tasks and navigates through the nodes:
+
+```text
+Reached Planner Node
+planner has planned these tasks  to solve the query : "differences in weather of sydney today and weather on 1999 dec 31"
+task 1:
+{
+  "type": "forecast",
+  "city": "Sydney",
+  "start_date": "2026-07-06",
+  "end_date": "2026-07-06"
+}
+task 2:
+{
+  "type": "historical",
+  "city": "Sydney",
+  "start_date": "1999-12-31",
+  "end_date": "1999-12-31"
+}
+
+task 1 reached DatabaseNode
+found results - 0 make a weather tool call
+
+task 2 reached DatabaseNode
+found results - 0 make a weather tool call
+
+task 1 Reached weather tool
+
+task 2 Reached weather tool
+
+--- [Response Node] --- Final Answer generated successfully.
+```
+
+If we immediately ask the same question again, watch what happens to the Database Node—it hits the cache and completely skips the Weather API Node!
+
+```text
+Reached Planner Node
+planner has planned these tasks  to solve the query : "differences in weather of sydney today and weather on 1999 dec 31"
+task 1:
+{
+  "type": "forecast",
+  "city": "Sydney",
+  "start_date": "2026-07-06",
+  "end_date": "2026-07-06"
+}
+task 2:
+{
+  "type": "historical",
+  "city": "Sydney",
+  "start_date": "1999-12-31",
+  "end_date": "1999-12-31"
+}
+
+task 1 reached DatabaseNode
+found results - 1
+
+task 2 reached DatabaseNode
+found results - 1
+
+--- [Response Node] --- Final Answer generated successfully.
+```
+
+---
+
+## The Final Visuals
+
+When integrated with the frontend, the UI receives both the markdown string (for the chat bubble) and the raw JSON data (to render beautiful horizontal weather widgets!).
+
+![Climato Output](../assets/climato.png)
+
+---
+
+## Source Code
+
+The full, working code for this project is available on GitHub!
+
+[**View the Climato Repository**](https://github.com/bunny/climato) *(Replace with your actual GitHub link)*
