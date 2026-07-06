@@ -9,7 +9,7 @@ Tie it all together by building a complete, production-ready Student Management 
 
 ---
 
-> **🏫 The Story: EduTrack — A School Management System**
+> **🏫 The Story: EduTrack**
 >
 > We are building EduTrack — a backend system for a school that manages Students, Courses, and Enrollments. Every section of this chapter tells the next part of the same story, using the same data, the same IDs, the same names.
 > The four technologies work together like this:
