@@ -52,7 +52,8 @@ python -m mkdocs gh-deploy
 
 ---
 
-## Important Repositories
+## Important Links & Repositories
 
+- **Live Site:** [https://pyt702.github.io/Python_HandBook/](https://pyt702.github.io/Python_HandBook/) (Hosted documentation)
 - **Python Handbook Repository:** [https://github.com/pyt702/Python_HandBook](https://github.com/pyt702/Python_HandBook) (This project)
 - **Climato Repository:** [https://github.com/pyt702/Climato](https://github.com/pyt702/Climato) (The capstone project mentioned in Chapter 6)
