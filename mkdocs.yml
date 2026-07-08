@@ -53,7 +53,7 @@ nav:
   - 'FastAPI': chapter-3/index.md
   - 'LangGraph': chapter-4/index.md
   - 'LangFuse': chapter-5/index.md
-  - 'EduTrack Project': chapter-6/index.md
+  - 'Climato Project': chapter-6/index.md
 
 markdown_extensions:
   - admonition
