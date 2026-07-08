@@ -49,3 +49,10 @@ If you need to deploy the site manually from your local machine, you can use the
 ```powershell
 python -m mkdocs gh-deploy
 ```
+
+---
+
+## Important Repositories
+
+- **Python Handbook Repository:** [https://github.com/pyt702/Python_HandBook](https://github.com/pyt702/Python_HandBook) (This project)
+- **Climato Repository:** [https://github.com/pyt702/Climato](https://github.com/pyt702/Climato) (The capstone project mentioned in Chapter 6)
